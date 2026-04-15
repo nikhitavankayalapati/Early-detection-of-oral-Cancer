@@ -1,0 +1,102 @@
+/* -------- Global -------- */
+body {
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    margin: 0;
+    padding: 0;
+}
+
+/* -------- Card Container -------- */
+.container {
+    width: 420px;
+    margin: 40px auto;
+    background: #ffffff;
+    padding: 30px;
+    border-radius: 14px;
+    box-shadow: 0 15px 30px rgba(0,0,0,0.25);
+}
+
+/* -------- Heading -------- */
+h2 {
+    text-align: center;
+    margin-bottom: 25px;
+    color: #2c3e50;
+    font-weight: 700;
+}
+
+/* -------- Labels -------- */
+label {
+    font-weight: 600;
+    color: #34495e;
+    margin-top: 12px;
+    display: block;
+}
+
+/* -------- Inputs -------- */
+input, select {
+    width: 100%;
+    padding: 10px;
+    margin-top: 6px;
+    margin-bottom: 14px;
+    border-radius: 6px;
+    border: 1px solid #dcdcdc;
+    font-size: 14px;
+    transition: 0.2s ease;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102,126,234,0.2);
+}
+
+/* -------- Button -------- */
+button {
+    width: 100%;
+    background: linear-gradient(135deg, #43cea2, #185a9d);
+    color: white;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s ease;
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+}
+
+/* -------- Result Box -------- */
+.result {
+    margin-top: 25px;
+    padding: 18px;
+    border-radius: 10px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+/* -------- OPMD Result -------- */
+.result.opmd {
+    background: linear-gradient(135deg, #ff6a6a, #ff4e50);
+    color: white;
+    box-shadow: 0 6px 15px rgba(255,0,0,0.3);
+}
+
+/* -------- Healthy Result -------- */
+.result.healthy {
+    background: linear-gradient(135deg, #56ab2f, #a8e063);
+    color: white;
+    box-shadow: 0 6px 15px rgba(0,128,0,0.3);
+}
+
+/* -------- Confidence Text -------- */
+.confidence {
+    display: block;
+    margin-top: 8px;
+    font-size: 16px;
+    font-weight: normal;
+}
