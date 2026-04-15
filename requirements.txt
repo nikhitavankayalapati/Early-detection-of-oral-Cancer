@@ -1,0 +1,8 @@
+flask
+torch
+torchvision
+xgboost
+pillow
+numpy
+joblib
+gunicorn
