@@ -10,6 +10,7 @@ import time
 
 # ================= SAFETY =================
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+torch.set_num_threads(1)  # 🔥 VERY IMPORTANT (CPU optimization)
 
 # ================= APP =================
 app = Flask(__name__)
@@ -18,14 +19,20 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 DEVICE = torch.device("cpu")
 
-# ================= LOAD CNN =================
+# ================= LOAD MODELS =================
+cnn = None
+xgb = None
+fusion = {}
+
+print("🚀 Loading models...")
+
+# ---------- CNN ----------
 try:
     cnn = models.efficientnet_b0(weights=None)
     cnn.classifier[1] = nn.Linear(cnn.classifier[1].in_features, 2)
 
     checkpoint = torch.load("models/oral_cancer_cnn (2).pth", map_location=DEVICE)
 
-    # Handle both formats
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         cnn.load_state_dict(checkpoint["model_state_dict"])
     else:
@@ -39,7 +46,7 @@ except Exception as e:
     cnn = None
     print("❌ CNN load error:", e)
 
-# ================= LOAD XGBOOST =================
+# ---------- XGBOOST ----------
 try:
     xgb = joblib.load("models/oral_cancer_metadata_xgb (2).pkl")
     print("✅ XGB model loaded")
@@ -47,7 +54,7 @@ except Exception as e:
     xgb = None
     print("❌ XGB load error:", e)
 
-# ================= LOAD FUSION =================
+# ---------- FUSION ----------
 try:
     fusion = joblib.load("models/fusion_config (2).pkl")
     IMAGE_WEIGHT = fusion.get("image_weight", 0.75)
@@ -58,14 +65,10 @@ except:
     META_WEIGHT = 0.25
     THRESHOLD = 0.60
 
-# ================= TRANSFORM =================
+# ================= IMAGE TRANSFORM =================
 img_transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
+    transforms.Resize((128, 128)),  # 🔥 reduced size for speed
+    transforms.ToTensor()
 ])
 
 # ================= ROUTE =================
@@ -78,14 +81,14 @@ def index():
 
     if request.method == "POST":
         try:
+            start_time = time.time()
+
             # ---------- IMAGE ----------
             image_file = request.files.get("image")
 
             if not image_file or image_file.filename == "":
-                error = "Please upload an image"
-                return render_template("index.html", error=error)
+                return render_template("index.html", error="Please upload an image")
 
-            # unique filename
             image_file_name = str(int(time.time())) + "_" + image_file.filename
             image_path = os.path.join(UPLOAD_FOLDER, image_file_name)
             image_file.save(image_path)
@@ -94,12 +97,27 @@ def index():
             image = img_transform(image).unsqueeze(0).to(DEVICE)
 
             # ---------- CNN ----------
-            img_prob = 0
-            if cnn:
-                with torch.no_grad():
-                    logits = cnn(image)
-                    probs = torch.softmax(logits, dim=1)[0]
-                img_prob = probs[1].item()
+            img_prob = 0.5  # fallback default
+
+            if cnn is not None:
+                try:
+                    cnn_start = time.time()
+
+                    with torch.no_grad():
+                        logits = cnn(image)
+                        probs = torch.softmax(logits, dim=1)[0]
+                        img_prob = probs[1].item()
+
+                    cnn_time = time.time() - cnn_start
+                    print("⏱ CNN Time:", cnn_time)
+
+                    # ⏱ Timeout protection
+                    if cnn_time > 8:
+                        print("⚠️ CNN too slow → fallback used")
+                        img_prob = 0.5
+
+                except Exception as e:
+                    print("❌ CNN error:", e)
 
             # ---------- METADATA ----------
             age = float(request.form.get("age", 0))
@@ -110,11 +128,14 @@ def index():
 
             age_norm = min(age / 100.0, 1.0)
 
-            meta = np.array([[age_norm, gender, smoking, chewing, alcohol]])
+            meta_prob = 0.5  # fallback
 
-            meta_prob = 0
-            if xgb:
-                meta_prob = xgb.predict_proba(meta)[0, 1]
+            if xgb is not None:
+                try:
+                    meta = np.array([[age_norm, gender, smoking, chewing, alcohol]])
+                    meta_prob = xgb.predict_proba(meta)[0][1]
+                except Exception as e:
+                    print("❌ XGB error:", e)
 
             # ---------- FUSION ----------
             final_prob = (IMAGE_WEIGHT * img_prob) + (META_WEIGHT * meta_prob)
@@ -122,10 +143,7 @@ def index():
             result = "OPMD Detected" if final_prob >= THRESHOLD else "Healthy"
             confidence = round(final_prob * 100, 2)
 
-            # ---------- DEBUG ----------
-            print("CNN:", img_prob)
-            print("META:", meta_prob)
-            print("FINAL:", final_prob)
+            print("⏱ Total Time:", time.time() - start_time)
 
         except Exception as e:
             error = str(e)
@@ -141,4 +159,5 @@ def index():
 
 # ================= RUN =================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
