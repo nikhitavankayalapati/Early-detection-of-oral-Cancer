@@ -16,19 +16,22 @@ UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# Prevent CPU overload (important for Render)
 torch.set_num_threads(1)
 
 print("🚀 Loading models...")
 
 # =========================
-# Load CNN Model (SAFE)
+# Paths (IMPORTANT)
+# =========================
+CNN_PATH = "model/cnn_model.pth"
+FUSION_PATH = "model/fusion_model.pkl"
+
+# =========================
+# Load CNN Model
 # =========================
 def load_cnn():
     try:
-        path = "oral_cancer_cnn (2).pth"
-
-        model_data = torch.load(path, map_location="cpu")
+        model_data = torch.load(CNN_PATH, map_location="cpu")
 
         # Case 1: state_dict
         if isinstance(model_data, dict):
@@ -53,7 +56,7 @@ cnn_model = load_cnn()
 # Load Fusion Model
 # =========================
 try:
-    fusion_model = joblib.load("fusion_config (2).pkl")
+    fusion_model = joblib.load(FUSION_PATH)
     print("✅ Fusion model loaded")
 except Exception as e:
     print("❌ Fusion load error:", e)
@@ -96,7 +99,6 @@ def predict_fusion(image_path, age, gender, smoking, chewing, alcohol):
         return "Model Error", 0
 
     try:
-        # CNN output
         cnn_prob = get_cnn_prob(image_path)
 
         # Encode inputs
@@ -105,10 +107,9 @@ def predict_fusion(image_path, age, gender, smoking, chewing, alcohol):
         chewing = 1 if chewing == "Yes" else 0
         alcohol = 1 if alcohol == "Yes" else 0
 
-        # Feature vector (IMPORTANT ORDER)
+        # Feature order MUST match training
         features = np.array([[cnn_prob, age, gender, smoking, chewing, alcohol]])
 
-        # Prediction
         prob = fusion_model.predict_proba(features)[0][1]
 
         result = "Cancer Detected" if prob > 0.5 else "No Cancer"
@@ -162,7 +163,14 @@ def index():
     )
 
 # =========================
-# Run (Local)
+# Debug (optional)
+# =========================
+print("📂 Root files:", os.listdir())
+if os.path.exists("model"):
+    print("📂 Model folder:", os.listdir("model"))
+
+# =========================
+# Run Local
 # =========================
 if __name__ == "__main__":
     app.run(debug=True)
