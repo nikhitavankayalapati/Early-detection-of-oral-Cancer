@@ -8,7 +8,7 @@ import joblib
 import numpy as np
 
 # =========================
-# Flask App
+# Flask Setup
 # =========================
 app = Flask(__name__)
 
@@ -16,21 +16,35 @@ UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
+# Prevent CPU overload (important for Render)
 torch.set_num_threads(1)
 
+print("🚀 Loading models...")
+
 # =========================
-# Load CNN (EfficientNet)
+# Load CNN Model (SAFE)
 # =========================
 def load_cnn():
     try:
-        model = models.efficientnet_b0(weights=None)
-        model.classifier[1] = nn.Linear(1280, 2)
-        model.load_state_dict(torch.load("cnn_model.pth", map_location="cpu"))
+        path = "oral_cancer_cnn (2).pth"
+
+        model_data = torch.load(path, map_location="cpu")
+
+        # Case 1: state_dict
+        if isinstance(model_data, dict):
+            model = models.efficientnet_b0(weights=None)
+            model.classifier[1] = nn.Linear(1280, 2)
+            model.load_state_dict(model_data)
+        else:
+            # Case 2: full model
+            model = model_data
+
         model.eval()
-        print("✅ CNN loaded")
+        print("✅ CNN model loaded")
         return model
+
     except Exception as e:
-        print("❌ CNN error:", e)
+        print("❌ CNN load error:", e)
         return None
 
 cnn_model = load_cnn()
@@ -39,7 +53,7 @@ cnn_model = load_cnn()
 # Load Fusion Model
 # =========================
 try:
-    fusion_model = joblib.load("fusion_model.pkl")
+    fusion_model = joblib.load("fusion_config (2).pkl")
     print("✅ Fusion model loaded")
 except Exception as e:
     print("❌ Fusion load error:", e)
@@ -54,47 +68,57 @@ transform = transforms.Compose([
 ])
 
 # =========================
-# CNN Feature / Probability
+# CNN Prediction
 # =========================
 def get_cnn_prob(image_path):
     if cnn_model is None:
         return 0.5
 
-    image = Image.open(image_path).convert("RGB")
-    image = transform(image).unsqueeze(0)
+    try:
+        image = Image.open(image_path).convert("RGB")
+        image = transform(image).unsqueeze(0)
 
-    with torch.no_grad():
-        output = cnn_model(image)
-        prob = torch.softmax(output, dim=1)[0][1].item()
+        with torch.no_grad():
+            output = cnn_model(image)
+            prob = torch.softmax(output, dim=1)[0][1].item()
 
-    return prob
+        return prob
+
+    except Exception as e:
+        print("❌ CNN prediction error:", e)
+        return 0.5
 
 # =========================
 # Fusion Prediction
 # =========================
 def predict_fusion(image_path, age, gender, smoking, chewing, alcohol):
     if fusion_model is None:
-        return "Error", 0
+        return "Model Error", 0
 
-    # CNN output
-    cnn_prob = get_cnn_prob(image_path)
+    try:
+        # CNN output
+        cnn_prob = get_cnn_prob(image_path)
 
-    # Encode inputs
-    gender = 1 if gender == "M" else 0
-    smoking = 1 if smoking == "Yes" else 0
-    chewing = 1 if chewing == "Yes" else 0
-    alcohol = 1 if alcohol == "Yes" else 0
+        # Encode inputs
+        gender = 1 if gender == "M" else 0
+        smoking = 1 if smoking == "Yes" else 0
+        chewing = 1 if chewing == "Yes" else 0
+        alcohol = 1 if alcohol == "Yes" else 0
 
-    # Final feature vector
-    features = np.array([[cnn_prob, age, gender, smoking, chewing, alcohol]])
+        # Feature vector (IMPORTANT ORDER)
+        features = np.array([[cnn_prob, age, gender, smoking, chewing, alcohol]])
 
-    # Prediction
-    prob = fusion_model.predict_proba(features)[0][1]
+        # Prediction
+        prob = fusion_model.predict_proba(features)[0][1]
 
-    result = "Cancer Detected" if prob > 0.5 else "No Cancer"
-    confidence = round(prob * 100, 2)
+        result = "Cancer Detected" if prob > 0.5 else "No Cancer"
+        confidence = round(prob * 100, 2)
 
-    return result, confidence
+        return result, confidence
+
+    except Exception as e:
+        print("❌ Fusion error:", e)
+        return "Prediction Error", 0
 
 # =========================
 # Routes
@@ -120,7 +144,7 @@ def index():
             filepath = os.path.join(app.config["UPLOAD_FOLDER"], image_file)
             file.save(filepath)
 
-            # Predict
+            # Prediction
             result, confidence = predict_fusion(
                 filepath, age, gender, smoking, chewing, alcohol
             )
@@ -138,7 +162,7 @@ def index():
     )
 
 # =========================
-# Run
+# Run (Local)
 # =========================
 if __name__ == "__main__":
     app.run(debug=True)
