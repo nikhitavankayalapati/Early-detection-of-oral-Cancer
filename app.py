@@ -10,7 +10,7 @@ import time
 
 # ================= SAFETY =================
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-torch.set_num_threads(1)  # 🔥 VERY IMPORTANT (CPU optimization)
+torch.set_num_threads(1)  # 🔥 important
 
 # ================= APP =================
 app = Flask(__name__)
@@ -20,15 +20,12 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 DEVICE = torch.device("cpu")
 
 # ================= LOAD MODELS =================
-cnn = None
-xgb = None
-fusion = {}
-
 print("🚀 Loading models...")
 
 # ---------- CNN ----------
+cnn = None
 try:
-    cnn = models.efficientnet_b0(weights=None)
+    cnn = models.mobilenet_v2(weights=None)   # 🔥 lighter than EfficientNet
     cnn.classifier[1] = nn.Linear(cnn.classifier[1].in_features, 2)
 
     checkpoint = torch.load("models/oral_cancer_cnn (2).pth", map_location=DEVICE)
@@ -40,34 +37,28 @@ try:
 
     cnn.to(DEVICE)
     cnn.eval()
+
     print("✅ CNN model loaded")
 
 except Exception as e:
-    cnn = None
     print("❌ CNN load error:", e)
 
 # ---------- XGBOOST ----------
+xgb = None
 try:
     xgb = joblib.load("models/oral_cancer_metadata_xgb (2).pkl")
     print("✅ XGB model loaded")
 except Exception as e:
-    xgb = None
     print("❌ XGB load error:", e)
 
 # ---------- FUSION ----------
-try:
-    fusion = joblib.load("models/fusion_config (2).pkl")
-    IMAGE_WEIGHT = fusion.get("image_weight", 0.75)
-    META_WEIGHT = fusion.get("meta_weight", 0.25)
-    THRESHOLD = fusion.get("threshold", 0.60)
-except:
-    IMAGE_WEIGHT = 0.75
-    META_WEIGHT = 0.25
-    THRESHOLD = 0.60
+IMAGE_WEIGHT = 0.75
+META_WEIGHT = 0.25
+THRESHOLD = 0.6
 
-# ================= IMAGE TRANSFORM =================
+# ================= TRANSFORM =================
 img_transform = transforms.Compose([
-    transforms.Resize((128, 128)),  # 🔥 reduced size for speed
+    transforms.Resize((128, 128)),  # 🔥 faster
     transforms.ToTensor()
 ])
 
@@ -87,7 +78,7 @@ def index():
             image_file = request.files.get("image")
 
             if not image_file or image_file.filename == "":
-                return render_template("index.html", error="Please upload an image")
+                return render_template("index.html", error="Upload image")
 
             image_file_name = str(int(time.time())) + "_" + image_file.filename
             image_path = os.path.join(UPLOAD_FOLDER, image_file_name)
@@ -97,8 +88,7 @@ def index():
             image = img_transform(image).unsqueeze(0).to(DEVICE)
 
             # ---------- CNN ----------
-            img_prob = 0.5  # fallback default
-
+            img_prob = 0.5
             if cnn is not None:
                 try:
                     cnn_start = time.time()
@@ -109,11 +99,11 @@ def index():
                         img_prob = probs[1].item()
 
                     cnn_time = time.time() - cnn_start
-                    print("⏱ CNN Time:", cnn_time)
+                    print("⏱ CNN:", cnn_time)
 
-                    # ⏱ Timeout protection
-                    if cnn_time > 8:
-                        print("⚠️ CNN too slow → fallback used")
+                    # ⏱ timeout safety
+                    if cnn_time > 6:
+                        print("⚠️ CNN slow → fallback")
                         img_prob = 0.5
 
                 except Exception as e:
@@ -128,14 +118,10 @@ def index():
 
             age_norm = min(age / 100.0, 1.0)
 
-            meta_prob = 0.5  # fallback
-
+            meta_prob = 0.5
             if xgb is not None:
-                try:
-                    meta = np.array([[age_norm, gender, smoking, chewing, alcohol]])
-                    meta_prob = xgb.predict_proba(meta)[0][1]
-                except Exception as e:
-                    print("❌ XGB error:", e)
+                meta = np.array([[age_norm, gender, smoking, chewing, alcohol]])
+                meta_prob = xgb.predict_proba(meta)[0][1]
 
             # ---------- FUSION ----------
             final_prob = (IMAGE_WEIGHT * img_prob) + (META_WEIGHT * meta_prob)
@@ -143,7 +129,7 @@ def index():
             result = "OPMD Detected" if final_prob >= THRESHOLD else "Healthy"
             confidence = round(final_prob * 100, 2)
 
-            print("⏱ Total Time:", time.time() - start_time)
+            print("⏱ TOTAL:", time.time() - start_time)
 
         except Exception as e:
             error = str(e)
