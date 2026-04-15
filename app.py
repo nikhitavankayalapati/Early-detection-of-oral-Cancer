@@ -21,10 +21,17 @@ torch.set_num_threads(1)
 print("🚀 Loading models...")
 
 # =========================
-# Paths (IMPORTANT)
+# CORRECT PATHS (FIXED)
 # =========================
-CNN_PATH = "model/cnn_model.pth"
-FUSION_PATH = "model/fusion_model.pkl"
+CNN_PATH = "models/oral_cancer_cnn (2).pth"
+FUSION_PATH = "models/fusion_config (2).pkl"
+
+# =========================
+# Debug (IMPORTANT)
+# =========================
+print("📂 Root files:", os.listdir())
+if os.path.exists("models"):
+    print("📂 Models folder:", os.listdir("models"))
 
 # =========================
 # Load CNN Model
@@ -33,13 +40,11 @@ def load_cnn():
     try:
         model_data = torch.load(CNN_PATH, map_location="cpu")
 
-        # Case 1: state_dict
         if isinstance(model_data, dict):
             model = models.efficientnet_b0(weights=None)
             model.classifier[1] = nn.Linear(1280, 2)
             model.load_state_dict(model_data)
         else:
-            # Case 2: full model
             model = model_data
 
         model.eval()
@@ -101,13 +106,11 @@ def predict_fusion(image_path, age, gender, smoking, chewing, alcohol):
     try:
         cnn_prob = get_cnn_prob(image_path)
 
-        # Encode inputs
         gender = 1 if gender == "M" else 0
         smoking = 1 if smoking == "Yes" else 0
         chewing = 1 if chewing == "Yes" else 0
         alcohol = 1 if alcohol == "Yes" else 0
 
-        # Feature order MUST match training
         features = np.array([[cnn_prob, age, gender, smoking, chewing, alcohol]])
 
         prob = fusion_model.predict_proba(features)[0][1]
@@ -140,12 +143,10 @@ def index():
             chewing = request.form["chewing"]
             alcohol = request.form["alcohol"]
 
-            # Save image
             image_file = file.filename
             filepath = os.path.join(app.config["UPLOAD_FOLDER"], image_file)
             file.save(filepath)
 
-            # Prediction
             result, confidence = predict_fusion(
                 filepath, age, gender, smoking, chewing, alcohol
             )
@@ -161,13 +162,6 @@ def index():
         image_file=image_file,
         error=error
     )
-
-# =========================
-# Debug (optional)
-# =========================
-print("📂 Root files:", os.listdir())
-if os.path.exists("model"):
-    print("📂 Model folder:", os.listdir("model"))
 
 # =========================
 # Run Local
